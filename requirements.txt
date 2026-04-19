@@ -1,0 +1,20 @@
+# Core Framework & Server
+fastapi
+uvicorn[standard]
+python-dotenv
+
+# Database & ORM
+sqlmodel
+psycopg2-binary
+alembic
+
+# Parsing Engine (Phase 2)
+pdfplumber
+spacy
+
+# AI Orchestration (Phase 3)
+openai
+
+# Document Export (Phase 3)
+weasyprint
+jinja2
