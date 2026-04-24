@@ -7,7 +7,7 @@ from alembic import context
 import sqlmodel
 
 from db.models.tablemodel import TableModel
-from db.models import user, resume_analysis, analysis     
+from db.models import user, analysis     
 from core.config import settings
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

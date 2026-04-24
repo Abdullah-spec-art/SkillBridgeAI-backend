@@ -1,42 +1,23 @@
-from sqlmodel import Session, select
 import uuid
-from db.models.analysis import Analysis  
+from sqlmodel import Session, select
+from db.models.analysis import Analysis
 
-class AnalysisRepository:
-    @staticmethod
-    def save_analysis(session: Session, user_id: uuid.UUID, job_description: str, ai_result: dict) -> Analysis:
-        """
-        Takes the raw JSON output from the AI and saves it to PostgreSQL.
-        """
-        db_analysis = Analysis(
-            user_id=user_id,
-            job_description=job_description,
-            match_percentage=ai_result.get("match_percentage", 0),
-            executive_summary=ai_result.get("executive_summary", ""),
-            missing_skills=ai_result.get("missing_skills", [])
-        )
-        
-        session.add(db_analysis)
-        session.commit()
-        session.refresh(db_analysis)
-        
-        return db_analysis
-    
+def create_analysis(db: Session, analysis: Analysis) -> Analysis:
+    db.add(analysis)
+    db.commit()
+    db.refresh(analysis)
+    return analysis
 
-def get_analysis_for_user(session: Session, user_id: uuid.UUID) -> list[Analysis]:
-    stmt = select(Analysis).where(Analysis.user_id == user_id)
-    return session.exec(stmt).all()
+def get_all_by_user(db: Session, user_id: uuid.UUID) -> list[Analysis]:
+    # Returns raw DB models, ordered newest to oldest
+    stmt = select(Analysis).where(Analysis.user_id == user_id).order_by(Analysis.created_at.desc())
+    return db.exec(stmt).all()
 
-def get_analysis_by_id(session: Session, analysis_id: uuid.UUID,user_id: uuid.UUID) -> Analysis:
-    stmt = select(Analysis).where(Analysis.id == analysis_id, Analysis.user_id == user_id)
-    return session.exec(stmt).first()
+def get_by_id(db: Session, analysis_id: uuid.UUID) -> Analysis | None:
+    # Pure fetch. Returns None if not found. No ownership checks here!
+    return db.get(Analysis, analysis_id)
 
-
-def delete_analysis_by_id(session: Session, analysis_id: uuid.UUID,user_id: uuid.UUID) -> bool:
-    stmt = select(Analysis).where(Analysis.id == analysis_id, Analysis.user_id == user_id)
-    analysis = session.exec(stmt).first()
-    if analysis:
-        session.delete(analysis)
-        session.commit()
-        return True
-    return False
+def delete_analysis(db: Session, analysis: Analysis) -> None:
+    # Blindly deletes the object passed to it
+    db.delete(analysis)
+    db.commit()

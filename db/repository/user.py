@@ -1,6 +1,7 @@
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
+from db.models.analysis import Analysis
 from db.models.user import User
-from schemas.user import UserCreate, UserLogin, OTPVerification, UserEmailSchema, Data, ResponseSchema
+from schemas.user import ProfileUpdate, UserCreate, UserLogin, OTPVerification, UserEmailSchema, Data, ResponseSchema
 from fastapi import HTTPException, status
 from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
@@ -9,6 +10,8 @@ import smtplib
 import random
 import uuid
 import os
+import requests
+from db.repository.jwt import create_access_token, create_refresh_token
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -54,9 +57,6 @@ def create_user(db: Session, user: UserCreate):
             detail="User already exists"
         )
     
-    if user.role not in ["candidate", "employer"]:
-        raise HTTPException(status_code=400, detail="Invalid role. Choose either 'candidate' or 'employer'.")
-
     hashed_password = hash_password(user.password)
     otp = generate_otp()
     
@@ -65,7 +65,6 @@ def create_user(db: Session, user: UserCreate):
         username=user.name, 
         email=user.email, 
         password=hashed_password,
-        role=user.role,
         otp=otp,
         email_verification=False,
         otp_created_at=datetime.now(timezone.utc)
@@ -85,7 +84,19 @@ def create_user(db: Session, user: UserCreate):
 # ==========================================
 def login_user(db: Session, user_login: UserLogin):
     user = fetch_user_by_email(db, user_login.email)
-    if user is None or not verify_password(user_login.password, user.password):
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials"
+        )
+    # Check if this is a Google-only account
+    if user.auth_provider == "google" and user.password is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account uses Google Login. Please click 'Continue with Google'."
+        )
+    # Add a check for user.password to avoid errors if it's None
+    if not user.password or not verify_password(user_login.password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
@@ -102,14 +113,17 @@ def login_user(db: Session, user_login: UserLogin):
         data = Data(name=user.username, email=user.email, email_verified=user.email_verification)
         return ResponseSchema[Data](data=data, message="Email not verified. A new OTP has been sent to your email.")
     
-    # Note: We will build create_access_token next!
-    from db.repository.jwt import create_access_token
+    # build create_access_token next!
+    
     access_token = create_access_token(
         data={"sub": str(user.id), "email": user.email}, 
         expires_delta=timedelta(minutes=30)
     )
+    refresh_token = create_refresh_token(
+    data={"sub": str(user.id), "email": user.email}
+)
     
-    data = Data(name=user.username, email=user.email, access_token=access_token)
+    data = Data(name=user.username, email=user.email, access_token=access_token,refresh_token=refresh_token)
     return ResponseSchema[Data](data=data, message="Login successful")
 
 def verify_otp(db: Session, user: OTPVerification):
@@ -139,8 +153,11 @@ def verify_otp(db: Session, user: OTPVerification):
         data={"sub": str(db_user.id), "email": db_user.email}, 
         expires_delta=timedelta(minutes=30)
     ) 
-    
-    data = Data(name=db_user.username, email=db_user.email, access_token=token)
+    refresh_token = create_refresh_token(
+    data={"sub": str(user.id), "email": user.email}
+)
+
+    data = Data(name=db_user.username, email=db_user.email, access_token=token, refresh_token=refresh_token)
     return ResponseSchema[Data](data=data, message="OTP verification completed successfully.")
 
 def reset_password(db: Session, user: UserEmailSchema):
@@ -189,7 +206,6 @@ def delete_user_by_id(db: Session, user_id: uuid.UUID):
 # UTILITY: EMAIL SENDER
 # ==========================================
 def send_otp_to_email(email: str, otp: str):
-    # Pro Tip: Pull these from .env so you don't push passwords to GitHub!
     mail_username = os.getenv("MAIL_USERNAME")
     mail_password = os.getenv("MAIL_PASSWORD") 
     mail_from = mail_username
@@ -208,3 +224,83 @@ def send_otp_to_email(email: str, otp: str):
             server.sendmail(mail_from, email, message.as_string()) 
     except Exception as e:
         print(f"Failed to send email: {e}")
+
+
+        
+class UserRepository:
+    @staticmethod
+    def authenticate_google_user(session: Session, google_token: str) -> User:
+        # 1. Ask Google if the Access Token is real and get the user's profile
+        response = requests.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {google_token}"}
+        )
+
+        # 2. If the token is fake or expired, trigger the ValueError (401)
+        if response.status_code != 200:
+            raise ValueError("Invalid Google access token")
+
+        # 3. Extract the data safely
+        idinfo = response.json()
+        email = idinfo.get('email')
+        
+        if not email:
+            raise ValueError("Google did not provide an email address")
+            
+        name = idinfo.get('name', email.split('@')[0])
+        
+        # 4. Find or Create the user in your database
+        statement = select(User).where(User.email == email)
+        user = session.exec(statement).first()
+
+        if not user:
+            user = User(
+                email=email,
+                username=name,
+                auth_provider="google",
+                email_verification=True,
+                password=None
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+
+        return user
+
+def update_user_profile(db: Session, current_user: User, profile_data: ProfileUpdate) -> User:
+    """Extracts valid fields from the Pydantic model and updates the database."""
+    
+    # exclude_unset=True ensures we only grab fields the user explicitly included in the JSON
+    update_dict = profile_data.dict(exclude_unset=True)
+    
+    # If the dictionary is empty (they sent {}), just return the user without hitting the DB
+    if not update_dict:
+        return current_user
+        
+    # Dynamically apply the updates to the SQLAlchemy model
+    for key, value in update_dict.items():
+        setattr(current_user, key, value)
+        
+    # Save the changes
+    db.commit()
+    db.refresh(current_user)
+    
+    return current_user
+
+
+def get_user_scan_stats(db: Session, user_id: str) -> dict:
+    """Calculates total scans and average match score for a specific user."""
+    
+    # 1. Build and execute the COUNT statement
+    count_statement = select(func.count(Analysis.id)).where(Analysis.user_id == user_id)
+    total_scans = db.exec(count_statement).first() or 0
+    
+    # 2. Build and execute the AVERAGE statement
+    avg_statement = select(func.avg(Analysis.match_percentage)).where(Analysis.user_id == user_id)
+    avg_score_raw = db.exec(avg_statement).first() or 0
+    avg_score = int(round(avg_score_raw))
+    
+    return {
+        "total_analyses": total_scans,
+        "average_score": avg_score
+    }

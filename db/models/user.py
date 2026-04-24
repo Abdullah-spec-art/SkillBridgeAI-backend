@@ -11,8 +11,9 @@ class User(TableModel, table=True):
     
     username: str = Field(nullable=False)
     email: str = Field(nullable=False, unique=True, index=True)
-    password: str = Field(nullable=False)
-    role: str = Field(nullable=False, max_length=10, index=True, default="user")
+    password: Optional[str] = Field(nullable=True)
+    auth_provider: str = Field(default="email") # "local" or "google"
+    role: str = Field(nullable=False, max_length=10, index=True, default="candidate") 
     
     # SkillBridge Specific Field
     skill_level: Optional[str] = Field(default=None)
@@ -21,6 +22,10 @@ class User(TableModel, table=True):
     otp: Optional[str] = Field(default=None)
     otp_created_at: Optional[datetime] = Field(default=None)
     email_verification: bool = Field(default=False)
+
+    # for scans
+    scans_remaining: int = Field(default=3)
+    last_replenished_at: Optional[datetime] = Field(default=None)
 
 
 

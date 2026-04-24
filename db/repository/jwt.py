@@ -12,11 +12,13 @@ from db.models.user import User
 security = HTTPBearer()
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 30 
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None):
     encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta if expires_delta else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    encode.update({"exp": expire})  
+    encode.update({"exp": expire,
+                   "type": "access"})  
     encoded_jwt = jwt.encode(encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
@@ -43,3 +45,17 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user or token")
         
     return user
+
+
+
+
+def create_refresh_token(data: dict):
+    encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+
+    encode.update({
+        "exp": expire,
+        "type": "refresh"
+    })
+
+    return jwt.encode(encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

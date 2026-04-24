@@ -1,11 +1,14 @@
 from fastapi import FastAPI
-from routes import auth, resume
+from middlewares.cors import setup_cors
+from routes import analysis, auth
 
 
 app = FastAPI(title="SkillBridge AI")
 
+setup_cors(app)
 app.include_router(auth.router)
-app.include_router(resume.router)
+app.include_router(analysis.router)
+
 
 @app.get("/")
 def read_root():

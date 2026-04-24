@@ -12,7 +12,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: str
-    role: str
+    role: str = "candidate"
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -36,6 +36,18 @@ class NewPassword(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
+class ProfileUpdate(BaseModel):
+    username: Optional[str] = None
 
+class UserDataResponse(BaseModel):
+    id: str
+    email: str
+    role: str
+    username: str
+    scans_remaining: int
+
+class ProfileResponse(BaseModel):
+    message: str
+    user_data: UserDataResponse
 
     
