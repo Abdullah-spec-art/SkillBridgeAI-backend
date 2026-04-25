@@ -5,8 +5,16 @@ python-dotenv
 
 # Database & ORM
 sqlmodel
-psycopg2-binary
+psycopg2-binary # This is for PostgreSQL
 alembic
+
+# Security & Authentication (NEW)
+passlib[bcrypt] # For hashing user passwords securely
+python-jose[cryptography] # For generating and verifying JWT access tokens
+python-multipart # Required by FastAPI to handle OAuth2 forms
+
+# Email & Verification (NEW)
+fastapi-mail # For sending the 6-digit OTP codes
 
 # Parsing Engine (Phase 2)
 pdfplumber

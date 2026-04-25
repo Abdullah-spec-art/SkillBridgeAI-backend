@@ -10,6 +10,10 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set")
 
+#THE FIX: Automatically correct Neon's URL format for SQLModel
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 # echo=True prints the raw SQL queries to the terminal (great for MVP debugging)
 engine = create_engine(DATABASE_URL, echo=True)
 
