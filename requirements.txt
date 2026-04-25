@@ -22,6 +22,7 @@ spacy
 
 # AI Orchestration (Phase 3)
 openai
+google-generativeai
 
 # Document Export (Phase 3)
 weasyprint
