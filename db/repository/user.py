@@ -154,7 +154,7 @@ def verify_otp(db: Session, user: OTPVerification):
         expires_delta=timedelta(minutes=30)
     ) 
     refresh_token = create_refresh_token(
-    data={"sub": str(user.id), "email": user.email}
+    data={"sub": str(db_user.id), "email": db_user.email}
 )
 
     data = Data(name=db_user.username, email=db_user.email, access_token=token, refresh_token=refresh_token)
