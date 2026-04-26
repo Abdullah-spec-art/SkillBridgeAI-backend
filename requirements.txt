@@ -9,7 +9,8 @@ psycopg2-binary # This is for PostgreSQL
 alembic
 
 # Security & Authentication (NEW)
-passlib[bcrypt] # For hashing user passwords securely
+passlib 
+bcrypt==3.2.2# For hashing user passwords securely
 python-jose[cryptography] # For generating and verifying JWT access tokens
 python-multipart # Required by FastAPI to handle OAuth2 forms
 

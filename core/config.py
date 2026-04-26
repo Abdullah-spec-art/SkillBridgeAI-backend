@@ -13,6 +13,6 @@ class Settings:
     POSTGRES_DB : str = os.getenv("POSTGRES_DB")
     SECRET_KEY= os.getenv("SECRET_KEY")
     ALGORITHM = os.getenv("ALGORITHM")
-    DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}/{POSTGRES_DB}"
+    DATABASE_URL = os.getenv("DATABASE_URL")
 settings = Settings()
 
