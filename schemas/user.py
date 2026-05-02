@@ -22,7 +22,11 @@ class Data(BaseModel):
     name: Optional[str]=None
     email: Optional[str]=None
     access_token: Optional[str]=None
+    refresh_token: Optional[str]=None
     email_verified:Optional[bool]=None
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 class UserEmailSchema(BaseModel):
     email: EmailStr

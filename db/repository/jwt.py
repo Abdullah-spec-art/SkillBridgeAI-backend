@@ -4,6 +4,7 @@ from jose import jwt, JWTError, ExpiredSignatureError
 from datetime import datetime, timedelta, timezone
 from sqlmodel import Session, select
 from typing import Union
+from fastapi import Request
 
 from core.config import settings
 from db.database import get_session
@@ -23,10 +24,13 @@ def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None
     return encoded_jwt
 
 def get_current_user(
-    db: Session = Depends(get_session), 
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    request: Request,
+    db: Session = Depends(get_session)
 ):
-    token = credentials.credentials
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         # Extract email from the payload we defined in user.py

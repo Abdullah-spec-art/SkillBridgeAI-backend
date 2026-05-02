@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from jose import JWTError
 from sqlmodel import Session 
 from sqlmodel import Session
@@ -22,7 +22,8 @@ from schemas.user import (
     UserLogin, 
     ResponseSchema, 
     OTPVerification, 
-    UserEmailSchema
+    UserEmailSchema,
+    RefreshTokenRequest
 )
 
 # Import the Database model for type hinting
@@ -31,17 +32,53 @@ from db.models.user import User
 # Set up the router
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str = None):
+    response.set_cookie(
+        key="access_token", 
+        value=access_token, 
+        httponly=True, 
+        secure=True, 
+        samesite="none",
+        max_age=30*60,
+        path="/"
+    )
+    if refresh_token:
+        response.set_cookie(
+            key="refresh_token", 
+            value=refresh_token, 
+            httponly=True, 
+            secure=True, 
+            samesite="none",
+            max_age=7*24*60*60,
+            path="/"
+        )
+    response.set_cookie(
+        key="is_logged_in", 
+        value="true", 
+        httponly=False, 
+        secure=True, 
+        samesite="none",
+        max_age=30*60,
+        path="/"
+    )
+
 @router.post("/signup", response_model=ResponseSchema)
 def signup(user: UserCreate, db: Session = Depends(get_session)):
     return user_repo.create_user(db=db, user=user)
 
 @router.post("/login", response_model=ResponseSchema)
-def login(user_login: UserLogin, db: Session = Depends(get_session)):
-    return user_repo.login_user(db=db, user_login=user_login)
+def login(user_login: UserLogin, response: Response, db: Session = Depends(get_session)):
+    result = user_repo.login_user(db=db, user_login=user_login)
+    if result.data and result.data.access_token:
+        set_auth_cookies(response, result.data.access_token, result.data.refresh_token)
+    return result
 
 @router.post("/verify-otp", response_model=ResponseSchema)
-def otp_verification(user: OTPVerification, db: Session = Depends(get_session)):
-    return user_repo.verify_otp(db=db, user=user)
+def otp_verification(user: OTPVerification, response: Response, db: Session = Depends(get_session)):
+    result = user_repo.verify_otp(db=db, user=user)
+    if result.data and result.data.access_token:
+        set_auth_cookies(response, result.data.access_token, result.data.refresh_token)
+    return result
 
 @router.post("/forgot-password", response_model=ResponseSchema)
 def forget_password(user: UserEmailSchema, db: Session = Depends(get_session)):
@@ -80,20 +117,19 @@ def read_users_me(current_user: User = Depends(get_current_user),db: Session=Dep
 
 
 @router.post("/google")
-def google_auth(request: GoogleAuthRequest, db: Session = Depends(get_session)):
+def google_auth(request: GoogleAuthRequest, response: Response, db: Session = Depends(get_session)):
     try:
         user = user_repo.UserRepository.authenticate_google_user(
             session=db, 
             google_token=request.google_token
         )
         
-        
         access_token = create_access_token(data={"sub": str(user.id), "email": user.email})
         refresh_token = create_refresh_token(data={"sub": str(user.id), "email": user.email})
         
+        set_auth_cookies(response, access_token, refresh_token)
+        
         return {
-            "access_token": access_token, 
-            "token_type": "bearer",
             "message": "Successfully logged in with Google",
             "user_data": {
                 "id": str(user.id),
@@ -111,8 +147,12 @@ def google_auth(request: GoogleAuthRequest, db: Session = Depends(get_session)):
     
 
 @router.post("/refresh")
-def refresh_token(refresh_token: str):
+def refresh_token(request: Request, response: Response):
     try:
+        refresh_token = request.cookies.get("refresh_token")
+        if not refresh_token:
+            raise HTTPException(status_code=401, detail="Refresh token missing")
+
         payload = jwt.decode(
             refresh_token,
             settings.SECRET_KEY,
@@ -126,13 +166,19 @@ def refresh_token(refresh_token: str):
 
         new_access_token = create_access_token(data={"email": email})
 
-        return {
-            "access_token": new_access_token,
-            "token_type": "bearer"
-        }
+        set_auth_cookies(response, new_access_token, refresh_token)
+
+        return {"message": "Token refreshed successfully"}
 
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+@router.post("/logout")
+def logout(response: Response):
+    response.delete_cookie("access_token", secure=True, samesite="none", path="/")
+    response.delete_cookie("refresh_token", secure=True, samesite="none", path="/")
+    response.delete_cookie("is_logged_in", secure=True, samesite="none", path="/")
+    return {"message": "Logged out successfully"}
 
 
 @router.put("/me/profile", response_model=ProfileResponse)
