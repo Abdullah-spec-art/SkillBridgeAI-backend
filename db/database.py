@@ -15,7 +15,7 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # echo=True prints the raw SQL queries to the terminal (great for MVP debugging)
-engine = create_engine(DATABASE_URL, echo=True)
+engine = create_engine(DATABASE_URL, echo=True, pool_pre_ping=True)
 
 def get_session():
     """Dependency injection for FastAPI routes."""

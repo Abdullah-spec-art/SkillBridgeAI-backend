@@ -163,8 +163,9 @@ def refresh_token(request: Request, response: Response):
             raise HTTPException(status_code=401, detail="Invalid token type")
 
         email = payload.get("email")
+        sub = payload.get("sub")
 
-        new_access_token = create_access_token(data={"email": email})
+        new_access_token = create_access_token(data={"email": email, "sub": sub})
 
         set_auth_cookies(response, new_access_token, refresh_token)
 
